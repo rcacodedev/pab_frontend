@@ -5,253 +5,204 @@ import "react-toastify/dist/ReactToastify.css";
 import { useCategorias } from "../../hooks/inventario/useCategorias";
 import { useProductos } from "../../hooks/inventario/useProductos";
 
+import CategoriaModal from "../../components/inventario/CategoriaModal";
+import ProductoModal from "../../components/inventario/ProductoModal";
+
 import {
-  createProducto,
   createCategoria,
-  createMovimiento,
+  createProducto,
 } from "../../services/inventarioService";
 
-import ProductoModal from "../../components/inventario/ProductoModal";
-import CategoriaModal from "../../components/inventario/CategoriaModal";
-import MovimientoModal from "../../components/inventario/MovimientoModal";
-
 export default function Inventario() {
-  const [activeTab, setActiveTab] = useState("productos");
+  const { categorias, loadCategorias } = useCategorias();
+  const [expandedIds, setExpandedIds] = useState([]);
+  const [isCategoriaModalOpen, setCategoriaModalOpen] = useState(false);
+  const [isProductoModalOpen, setProductoModalOpen] = useState(false);
+  const [selectedCategoriaId, setSelectedCategoriaId] = useState(null);
+  const [searchTerm, setSearchTerm] = useState("");
 
-  // -------------------------------
-  // Hooks para categorías y productos
-  // -------------------------------
-  const {
-    categorias,
-    loading: loadingCategorias,
-    refetch: refetchCategorias,
-  } = useCategorias();
+  const { productos, loadProductos, page, totalPages, setPage } =
+    useProductos(selectedCategoriaId);
 
-  const [selectedCategoria, setSelectedCategoria] = useState(null);
-
-  const {
-    productos,
-    loadProductos,
-    page,
-    setPage,
-    totalPages,
-    loading: loadingProductos,
-  } = useProductos(selectedCategoria?.id);
-
-  const [movimientos, setMovimientos] = useState([]);
-  const [loadingMovimientos, setLoadingMovimientos] = useState(false);
-
-  // -------------------------------
-  // Modal
-  // -------------------------------
-  const [modalType, setModalType] = useState(null);
-
-  const openModal = (type) => setModalType(type);
-  const closeModal = () => setModalType(null);
-
-  // -------------------------------
-  // Fetch movimientos
-  // -------------------------------
-  const fetchMovimientos = async () => {
-    setLoadingMovimientos(true);
-    try {
-      const res = await fetch("/api/movimientos/");
-      const data = await res.json();
-      setMovimientos(data.results || data);
-    } catch (err) {
-      toast.error("Error cargando movimientos");
-    } finally {
-      setLoadingMovimientos(false);
-    }
-  };
-
+  // ======================
+  // 📌 Cargar categorías al inicio
+  // ======================
   useEffect(() => {
-    if (selectedCategoria) loadProductos(1);
-    fetchMovimientos();
-  }, [selectedCategoria]);
+    loadCategorias();
+  }, []);
 
-  // -------------------------------
-  // Manejo de creación
-  // -------------------------------
-  const handleCreate = async (data) => {
+  // ======================
+  // 📌 Expandir / Contraer categorías con animación y lazy load
+  // ======================
+  const toggleExpand = async (categoriaId) => {
+    if (expandedIds.includes(categoriaId)) {
+      setExpandedIds(expandedIds.filter((id) => id !== categoriaId));
+    } else {
+      setExpandedIds([...expandedIds, categoriaId]);
+      setSelectedCategoriaId(categoriaId);
+      await loadProductos(1); // Lazy load productos
+    }
+  };
+
+  // ======================
+  // 📌 Crear categoría
+  // ======================
+  const handleCreateCategoria = async (data) => {
+    if (!data.nombre) return toast.error("El nombre es obligatorio");
     try {
-      if (modalType === "producto") {
-        await createProducto(data);
-        toast.success("Producto creado");
-        loadProductos(1);
-      } else if (modalType === "categoria") {
-        await createCategoria(data);
-        toast.success("Categoría creada");
-        refetchCategorias();
-      } else if (modalType === "movimiento") {
-        await createMovimiento(data);
-        toast.success("Movimiento registrado");
-        fetchMovimientos();
-      }
-      closeModal();
-    } catch (err) {
-      toast.error(err.response?.data?.detail || "Error al crear");
+      await createCategoria(data);
+      toast.success("Categoría creada correctamente");
+      loadCategorias();
+      setCategoriaModalOpen(false);
+    } catch {
+      toast.error("Error al crear categoría");
     }
   };
 
-  // -------------------------------
-  // Tabs
-  // -------------------------------
-  const renderTabs = () => (
-    <div className="flex space-x-4 border-b mb-6">
-      {["productos", "categorias", "movimientos"].map((tab) => (
-        <button
-          key={tab}
-          onClick={() => setActiveTab(tab)}
-          className={`px-4 py-2 font-medium ${
-            activeTab === tab
-              ? "border-b-2 border-blue-600 text-blue-600"
-              : "text-gray-500 hover:text-blue-500"
-          }`}
-        >
-          {tab.charAt(0).toUpperCase() + tab.slice(1)}
-        </button>
-      ))}
-    </div>
-  );
-
-  // -------------------------------
-  // Contenido de tabs
-  // -------------------------------
-  const renderContent = () => {
-    if (activeTab === "productos") {
-      return (
-        <div>
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold">Productos</h2>
-            <button
-              onClick={() => openModal("producto")}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-            >
-              + Añadir Producto
-            </button>
-          </div>
-          {loadingProductos ? (
-            <div className="text-center py-10">Cargando productos...</div>
-          ) : (
-            <table className="min-w-full text-left bg-white shadow rounded-lg overflow-hidden">
-              <thead className="bg-gray-100">
-                <tr>
-                  <th className="px-4 py-2">Nombre</th>
-                  <th className="px-4 py-2">Stock</th>
-                  <th className="px-4 py-2">Categoría</th>
-                </tr>
-              </thead>
-              <tbody>
-                {productos.map((p) => (
-                  <tr key={p.id} className="border-t">
-                    <td className="px-4 py-2">{p.nombre}</td>
-                    <td className="px-4 py-2">{p.stock}</td>
-                    <td className="px-4 py-2">{p.categoria_nombre || "-"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      );
-    }
-
-    if (activeTab === "categorias") {
-      return (
-        <div>
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold">Categorías</h2>
-            <button
-              onClick={() => openModal("categoria")}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-            >
-              + Añadir Categoría
-            </button>
-          </div>
-          {loadingCategorias ? (
-            <div className="text-center py-10">Cargando categorías...</div>
-          ) : (
-            <ul className="bg-white shadow rounded-lg overflow-hidden">
-              {categorias.map((c) => (
-                <li
-                  key={c.id}
-                  className="px-4 py-2 border-t cursor-pointer hover:bg-gray-100"
-                  onClick={() => setSelectedCategoria(c)}
-                >
-                  {c.nombre}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      );
-    }
-
-    if (activeTab === "movimientos") {
-      return (
-        <div>
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold">Movimientos</h2>
-            <button
-              onClick={() => openModal("movimiento")}
-              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
-            >
-              + Registrar Movimiento
-            </button>
-          </div>
-          {loadingMovimientos ? (
-            <div className="text-center py-10">Cargando movimientos...</div>
-          ) : (
-            <table className="min-w-full text-left bg-white shadow rounded-lg overflow-hidden">
-              <thead className="bg-gray-100">
-                <tr>
-                  <th className="px-4 py-2">Producto</th>
-                  <th className="px-4 py-2">Cantidad</th>
-                  <th className="px-4 py-2">Fecha</th>
-                </tr>
-              </thead>
-              <tbody>
-                {movimientos.map((m) => (
-                  <tr key={m.id} className="border-t">
-                    <td className="px-4 py-2">{m.producto_nombre}</td>
-                    <td className="px-4 py-2">{m.cantidad}</td>
-                    <td className="px-4 py-2">
-                      {new Date(m.created_at).toLocaleDateString()}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      );
+  // ======================
+  // 📌 Crear producto
+  // ======================
+  const handleCreateProducto = async (data) => {
+    if (!data.nombre || !data.stock)
+      return toast.error("Todos los campos son obligatorios");
+    try {
+      await createProducto({ ...data, categoria: selectedCategoriaId });
+      toast.success("Producto creado correctamente");
+      loadProductos(page);
+      setProductoModalOpen(false);
+    } catch {
+      toast.error("Error al crear producto");
     }
   };
 
+  // ======================
+  // 📌 Render recursivo de categorías
+  // ======================
+  const renderCategoria = (categoria, level = 0) => {
+    const isExpanded = expandedIds.includes(categoria.id);
+
+    return (
+      <div
+        key={categoria.id}
+        className={`ml-${level * 4} border-l border-gray-300 pl-2 py-1`}
+      >
+        <div className="flex justify-between items-center">
+          <button
+            onClick={() => toggleExpand(categoria.id)}
+            className="text-left font-medium flex-1 hover:text-blue-600 transition-colors duration-200"
+          >
+            {isExpanded ? "▼ " : "▶ "} {categoria.nombre}
+          </button>
+          <button
+            onClick={() => {
+              setSelectedCategoriaId(categoria.id);
+              setProductoModalOpen(true);
+            }}
+            className="px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm transition-colors duration-200"
+          >
+            + Producto
+          </button>
+        </div>
+
+        {isExpanded && (
+          <div className="mt-2 space-y-2 transition-all duration-300 ease-in-out">
+            {/* Subcategorías */}
+            {categoria.children?.map((child) =>
+              renderCategoria(child, level + 1)
+            )}
+
+            {/* Productos */}
+            {categoria.id === selectedCategoriaId && productos.length > 0 && (
+              <div className="overflow-x-auto bg-white shadow rounded-lg mt-2">
+                <table className="min-w-full text-left">
+                  <thead className="bg-gray-100 text-gray-700">
+                    <tr>
+                      <th className="px-4 py-2">Nombre</th>
+                      <th className="px-4 py-2">Stock</th>
+                      <th className="px-4 py-2">Categoría</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {productos.map((p) => (
+                      <tr
+                        key={p.id}
+                        className="border-t hover:bg-gray-50 transition-colors duration-200"
+                      >
+                        <td className="px-4 py-2">{p.nombre}</td>
+                        <td className="px-4 py-2">{p.stock}</td>
+                        <td className="px-4 py-2">{p.categoria_nombre}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {/* Paginación */}
+                {totalPages > 1 && (
+                  <div className="flex justify-center space-x-2 mt-2">
+                    {[...Array(totalPages)].map((_, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setPage(i + 1)}
+                        className={`px-2 py-1 border rounded ${
+                          page === i + 1
+                            ? "bg-blue-600 text-white"
+                            : "bg-gray-200 hover:bg-gray-300"
+                        } transition-colors duration-200`}
+                      >
+                        {i + 1}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // ======================
+  // 📌 Render principal
+  // ======================
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-bold mb-4">Gestión de Inventario</h1>
+      <div className="flex justify-between items-center mb-6">
+        <button
+          onClick={() => setCategoriaModalOpen(true)}
+          className="px-4 py-2 bg-green-600 text-white rounded shadow hover:bg-green-700 transition-colors duration-200"
+        >
+          + Crear Categoría
+        </button>
 
-      {renderTabs()}
-      {renderContent()}
+        <input
+          type="text"
+          placeholder="Buscar categorías o productos..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="border p-2 rounded w-1/3"
+        />
+      </div>
 
-      {/* Modales separados */}
-      {modalType === "producto" && (
-        <ProductoModal
-          categorias={categorias}
-          onClose={closeModal}
-          onSubmit={handleCreate}
+      <div className="space-y-2">
+        {categorias
+          .filter((c) =>
+            c.nombre.toLowerCase().includes(searchTerm.toLowerCase())
+          )
+          .map((c) => renderCategoria(c))}
+      </div>
+
+      {/* Modales */}
+      {isCategoriaModalOpen && (
+        <CategoriaModal
+          onClose={() => setCategoriaModalOpen(false)}
+          onSubmit={handleCreateCategoria}
         />
       )}
-      {modalType === "categoria" && (
-        <CategoriaModal onClose={closeModal} onSubmit={handleCreate} />
-      )}
-      {modalType === "movimiento" && (
-        <MovimientoModal
-          productos={productos}
-          onClose={closeModal}
-          onSubmit={handleCreate}
+      {isProductoModalOpen && (
+        <ProductoModal
+          categorias={categorias}
+          onClose={() => setProductoModalOpen(false)}
+          onSubmit={handleCreateProducto}
         />
       )}
 
